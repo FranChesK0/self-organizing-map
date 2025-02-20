@@ -18,14 +18,14 @@ som = MiniSom(
     9,
     6,
     data_train_matrix.shape[1],
-    sigma=1,
-    learning_rate=0.5,
+    sigma=0.7,
+    learning_rate=0.2,
     neighborhood_function="gaussian",
     random_seed=123,
 )
 
 errors = []
-for _ in range(100):
+for _ in range(500):
     som.train_random(data_train_matrix, 1)
     errors.append(som.quantization_error(data_train_matrix))
 
