@@ -6,14 +6,17 @@ from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import StandardScaler
 from scipy.cluster.hierarchy import linkage, fcluster
 
+# Загрузка данных
 boston_data = fetch_openml(name="boston", as_frame=True, parser="pandas", version=1)
 boston = boston_data.frame
 
+# Выбор переменных
 names = ["INDUS", "DIS", "NOX", "MEDV", "LSTAT", "AGE", "RAD"]
 data_train = boston[names]
 scaler = StandardScaler()
 data_train_matrix = scaler.fit_transform(data_train)
 
+# Создание SOM размером 9x6 узлов
 som = MiniSom(
     9,
     6,
@@ -24,11 +27,13 @@ som = MiniSom(
     random_seed=123,
 )
 
+# Обучение SOM с сохранением ошибки
 errors = []
 for _ in range(500):
     som.train_random(data_train_matrix, 1)
     errors.append(som.quantization_error(data_train_matrix))
 
+# Визуализация ошибки
 plt.figure(figsize=(10, 5))
 plt.plot(errors, label="Изменения ошибки")
 plt.xlabel("Итерация")
@@ -37,22 +42,22 @@ plt.legend()
 plt.show()
 
 
-def cool_blue_hot_red(n):
-    return plt.cm.coolwarm(np.linspace(0, 1, n))
-
-
+# Количество объектов на каждом узле
 plt.figure(figsize=(10, 5))
 plt.pcolor(som.distance_map(), cmap="coolwarm")
 plt.colorbar(label="Среднее расстояние до прототипов")
 plt.title("Quality")
 plt.show()
 
+# Присвоение узлов каждому наблюдению
 win_map = som.win_map(data_train_matrix)
 node_assignments = np.array([som.winner(x) for x in data_train_matrix])
 boston["NODE"] = [n[0] * 6 + n[1] for n in node_assignments]
 
+# Количество наблюдений в каджом узле
 print(pd.Series(boston["NODE"]).value_counts())
 
+# Визуализация кластеров
 mydata = som.get_weights().reshape(-1, data_train_matrix.shape[1])
 clusters = fcluster(linkage(mydata), 5, criterion="maxclust")
 
