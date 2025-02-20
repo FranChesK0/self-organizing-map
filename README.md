@@ -1,2 +1,2 @@
-# self-organizing-map
+# SOM
 Rewrite SOM code from R to Python
