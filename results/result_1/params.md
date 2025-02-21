@@ -1,3 +1,4 @@
 - sigma: 1
 - learning_rate: 0.5
 - iterations: 100
+- method: single
