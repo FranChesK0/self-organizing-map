@@ -21,15 +21,18 @@ som = MiniSom(
     9,
     6,
     data_train_matrix.shape[1],
-    sigma=0.7,
-    learning_rate=0.2,
+    # sigma=0.7,
+    # learning_rate=0.2,
+    sigma=0.05,
+    learning_rate=0.01,
     neighborhood_function="gaussian",
     random_seed=123,
+    topology="hexagonal",
 )
 
 # Обучение SOM с сохранением ошибки
 errors = []
-for _ in range(500):
+for _ in range(100):
     som.train_random(data_train_matrix, 1)
     errors.append(som.quantization_error(data_train_matrix))
 
@@ -59,7 +62,7 @@ print(pd.Series(boston["NODE"]).value_counts())
 
 # Визуализация кластеров
 mydata = som.get_weights().reshape(-1, data_train_matrix.shape[1])
-clusters = fcluster(linkage(mydata), 5, criterion="maxclust")
+clusters = fcluster(linkage(mydata, method="complete"), 5, criterion="maxclust")
 
 plt.figure(figsize=(10, 5))
 plt.pcolor(som.distance_map(), cmap="coolwarm")

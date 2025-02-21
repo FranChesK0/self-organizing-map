@@ -1,0 +1,4 @@
+- sigma: 0.05
+- learning_rate: 0.01
+- iterations: 100
+- method: complete
