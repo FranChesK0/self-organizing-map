@@ -1,81 +1,155 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from minisom import MiniSom
-from sklearn.datasets import fetch_openml
+from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from scipy.cluster.hierarchy import linkage, fcluster
 
-# Загрузка данных
-boston_data = fetch_openml(name="boston", as_frame=True, parser="pandas", version=1)
-boston = boston_data.frame
+SIGMA = 0.5
+LEARNING_RATE = 0.001
+ITERATIONS = 1000
+RANDOM_SEED = 123
+CLUSTERS = 5
 
-# Выбор переменных
-names = ["INDUS", "DIS", "NOX", "MEDV", "LSTAT", "AGE", "RAD"]
-data_train = boston[names]
+
+def create_som(data, x, y, sigma=SIGMA, learning_rate=LEARNING_RATE, random_seed=RANDOM_SEED):
+    return MiniSom(
+        x,
+        y,
+        data.shape[1],
+        sigma=sigma,
+        learning_rate=learning_rate,
+        neighborhood_function="gaussian",
+        random_seed=random_seed,
+    )
+
+
+root_dir_path = Path(__file__).parent.parent
+dataset_path = Path(root_dir_path, "data", "Boston.csv")
+boston = pd.read_csv(dataset_path)
+
+columns = ["indus", "dis", "nox", "medv", "lstat", "age", "rad"]
+data_train = boston[columns].copy()
+
 scaler = StandardScaler()
-data_train_matrix = scaler.fit_transform(data_train)
+data_train_scaled = scaler.fit_transform(data_train)
 
-# Создание SOM размером 9x6 узлов
-som = MiniSom(
-    9,
-    6,
-    data_train_matrix.shape[1],
-    # sigma=0.7,
-    # learning_rate=0.2,
-    sigma=0.05,
-    learning_rate=0.01,
-    neighborhood_function="gaussian",
-    random_seed=123,
-    topology="hexagonal",
-)
+np.random.seed(RANDOM_SEED)
+som_x, som_y = 9, 6
 
-# Обучение SOM с сохранением ошибки
-errors = []
-for _ in range(100):
-    som.train_random(data_train_matrix, 1)
-    errors.append(som.quantization_error(data_train_matrix))
+som = create_som(data_train_scaled, som_x, som_y)
+som.random_weights_init(data_train_scaled)
+q_error = []
+for i in range(ITERATIONS):
+    rand_i = np.random.randint(len(data_train_scaled))
+    som.update(data_train_scaled[rand_i], som.winner(data_train_scaled[rand_i]), i, ITERATIONS)
+    q_error.append(som.quantization_error(data_train_scaled))
 
-# Визуализация ошибки
-plt.figure(figsize=(10, 5))
-plt.plot(errors, label="Изменения ошибки")
-plt.xlabel("Итерация")
-plt.ylabel("Ошибка квантования")
+plt.figure(figsize=(7, 7))
+plt.plot(np.arange(ITERATIONS), q_error, label="quantization error")
+plt.xlabel("iteration")
+plt.ylabel("error")
 plt.legend()
 plt.show()
 
+som = create_som(data_train_scaled, som_x, som_y)
+som.random_weights_init(data_train_scaled)
+som.train_random(data_train_scaled, ITERATIONS)
 
-# Количество объектов на каждом узле
-plt.figure(figsize=(10, 5))
-plt.pcolor(som.distance_map(), cmap="coolwarm")
-plt.colorbar(label="Среднее расстояние до прототипов")
-plt.title("Quality")
+plt.figure(figsize=(8, 6))
+frequencies = np.zeros((som_x, som_y))
+for x in data_train_scaled:
+    w = som.winner(x)
+    frequencies[w] += 1
+plt.imshow(frequencies.T, cmap="coolwarm", origin="lower")
+plt.colorbar(label="Number of Observations")
+plt.title("SOM Node Occupancy (Counts)")
 plt.show()
 
-# Присвоение узлов каждому наблюдению
-win_map = som.win_map(data_train_matrix)
-node_assignments = np.array([som.winner(x) for x in data_train_matrix])
-boston["NODE"] = [n[0] * 6 + n[1] for n in node_assignments]
+plt.figure(figsize=(8, 6))
+q_errors = np.zeros((som_x, som_y))
+for x in data_train_scaled:
+    w = som.winner(x)
+    q_errors[w] += np.linalg.norm(x - som.get_weights()[w])
+plt.imshow(q_errors.T, cmap="coolwarm", origin="lower")
+plt.colorbar(label="Average Distance to Prototype")
+plt.title("SOM Node Quality")
+plt.show()
 
-# Количество наблюдений в каджом узле
-print(pd.Series(boston["NODE"]).value_counts())
+colors_boston = np.where(boston["black"] <= 100, "red", "gray")
+plt.figure(figsize=(8, 6))
+for i, x in enumerate(data_train_scaled):
+    w = som.winner(x)
+    plt.scatter(w[0] + 0.5, w[1] + 0.5, c=colors_boston[i], edgecolors="k", marker="o", s=50)
+plt.xlim([0, som_x])
+plt.ylim([0, som_y])
+plt.title("SOM Mapping (Colored by 'black' Feature)")
+plt.grid()
+plt.show()
 
-# Визуализация кластеров
-mydata = som.get_weights().reshape(-1, data_train_matrix.shape[1])
-clusters = fcluster(linkage(mydata, method="complete"), 5, criterion="maxclust")
-
-plt.figure(figsize=(10, 5))
-plt.pcolor(som.distance_map(), cmap="coolwarm")
-for x, y in node_assignments:
-    node_index = x * 6 + y
-    if node_index < len(clusters):
-        plt.text(
-            y + 0.5, x + 0.5, str(clusters[node_index]), color="black", ha="center", va="center"
+fig, ax = plt.subplots(som_x, som_y, figsize=(9, 6), dpi=100)
+fig.suptitle("Code plot")
+for x in range(som_x):
+    for y in range(som_y):
+        weights = som.get_weights()[x][y]
+        ax[x, y].pie(
+            np.abs(weights),
+            labels=columns,
+            colors=["green", "lime", "blue", "gold", "brown", "pink", "gray"],
         )
-plt.colorbar(label="Cluster ID")
-plt.title("Кластеры узлов SOM")
+        ax[x, y].set_xticks([])
+        ax[x, y].set_yticks([])
+plt.tight_layout(rect=(0, 0, 1, 0.96))
 plt.show()
 
-print(clusters)
-print(data_train)
-print(som)
+node_assignments = np.array([som.winner(x) for x in data_train_scaled])
+boston["node"] = [f"{x}-{y}" for x, y in node_assignments]
+node_counts = boston["node"].value_counts()
+print(node_counts)
+node_1_rows = boston[boston["node"] == "1-1"]
+print(node_1_rows)
+
+nox_values = np.array(
+    [
+        data_train_scaled[:, columns.index("nox")][
+            np.all(node_assignments == (i, j), axis=1)
+        ].mean()
+        if np.any(np.all(node_assignments == (i, j), axis=1))
+        else 0
+        for i in range(som_x)
+        for j in range(som_y)
+    ]
+)
+plt.figure(figsize=(8, 6))
+plt.imshow(nox_values.reshape((som_x, som_y)), cmap="coolwarm", aspect="auto")
+plt.colorbar(label="Среднее содержание NOx")
+plt.title("nox - содержание окислов азота")
+plt.show()
+
+weights = som.get_weights().reshape(-1, len(columns))
+linkage_matrix = linkage(weights, method="complete")
+clusters = fcluster(linkage_matrix, 5, criterion="maxclust")
+
+plt.figure(figsize=(8, 6))
+plt.imshow(clusters.reshape((som_x, som_y)), aspect="auto")
+plt.colorbar(label="Кластеры")
+plt.title("Кластеризация узлов SOM")
+plt.show()
+
+weights = som.get_weights().reshape(-1, data_train_scaled.shape[1])
+kmeans = KMeans(n_clusters=CLUSTERS, random_state=RANDOM_SEED)
+clusters = kmeans.fit_predict(weights)
+
+cluster_map = clusters.reshape((som_x, som_y))
+plt.figure(figsize=(8, 8))
+plt.imshow(cluster_map, cmap="Blues", alpha=0.7)
+plt.colorbar(label="Cluster")
+
+for x in range(som_x):
+    for y in range(som_y):
+        plt.text(y, x, cluster_map[x, y], ha="center", va="center", color="black")
+plt.title("SOM Clusters")
+plt.show()
